@@ -1,30 +1,54 @@
 import asyncio
+import os
 from logging.config import fileConfig
+from pathlib import Path
+
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
-# Import all models so Alembic can detect them
+# ── Load .env manually before anything else ───────────────────────────────────
+# We read DATABASE_URL directly from the .env file instead of passing it
+# through alembic.ini / configparser. This avoids the ValueError caused by
+# % characters in URL-encoded passwords (configparser treats % as an
+# interpolation prefix and raises "invalid interpolation syntax").
+def _load_env_file():
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.exists():
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key not in os.environ:
+                os.environ[key] = value
+
+_load_env_file()
+
+# ── Now import app modules (they read from os.environ via pydantic-settings) ──
 from app.db.session import Base
-from app.models import models  # noqa — registers all models on Base.metadata
-from app.core.config import settings
+import app.models  # noqa — registers all models on Base.metadata
 
 config = context.config
-
-# Override sqlalchemy.url with the value from our settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
+# Get DATABASE_URL directly from environment — never touch config.set_main_option
+# with a URL that may contain % characters.
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=DATABASE_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -40,8 +64,10 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = DATABASE_URL
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from app.api.deps import DbDep, CurrentUser
-from app.schemas.schemas import DailyRecommendationOut, PantryMatchResult
-from app.services.recommendations import get_daily_recommendation
-from app.services.pantry import get_pantry_matches
+from app.schemas.recommendation import DailyRecommendationOut
+from app.schemas.pantry import PantryMatchResult
+from app.services.recommendations import get_daily_recommendation, get_pantry_matches
 
 router = APIRouter(prefix="/recommendations", tags=["Recommendations"])
 

@@ -1,31 +1,28 @@
 from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from datetime import date, datetime, timezone
+from datetime import date
 from app.api.deps import DbDep, CurrentUser
 from app.core.exceptions import NotFoundException, BadRequestException
-from app.models import (
-    DailyPlan, DailyPlanSlot, MealLogEntry, Meal,
-    PlanStatus, SlotStatus, SlotType, MealStatus
-)
-from app.schemas.schemas import (
-    DailyPlanOut, UpdateSlotRequest, LogExtraMealRequest, MessageResponse, MealLogOut
-)
+from app.models.plan import DailyPlan, DailyPlanSlot
+from app.models.log import MealLogEntry
+from app.models.meal import Meal
+from app.models.base import PlanStatus, SlotStatus
+from app.schemas.plan import DailyPlanOut, UpdateSlotRequest, LogExtraMealRequest
+from app.schemas.log import MealLogOut
+from app.schemas.common import MessageResponse
 from app.services.planner import generate_plan_for_date
 
 router = APIRouter(prefix="/plan", tags=["Planning"])
 
 
-def _plan_options():
-    return [
-        selectinload(DailyPlan.slots).selectinload(DailyPlanSlot.meal)
-    ]
+def _plan_eager():
+    return [selectinload(DailyPlan.slots).selectinload(DailyPlanSlot.meal)]
 
 
 @router.get("/today", response_model=DailyPlanOut)
 async def get_today_plan(current_user: CurrentUser, db: DbDep):
-    today = date.today()
-    return await _get_or_create_plan(current_user.id, today, db, current_user)
+    return await _get_or_create(current_user, date.today(), db)
 
 
 @router.get("/{plan_date}", response_model=DailyPlanOut)
@@ -33,7 +30,7 @@ async def get_plan_by_date(plan_date: date, current_user: CurrentUser, db: DbDep
     result = await db.execute(
         select(DailyPlan)
         .where(DailyPlan.user_id == current_user.id, DailyPlan.plan_date == plan_date)
-        .options(*_plan_options())
+        .options(*_plan_eager())
     )
     plan = result.scalar_one_or_none()
     if not plan:
@@ -43,22 +40,14 @@ async def get_plan_by_date(plan_date: date, current_user: CurrentUser, db: DbDep
 
 @router.post("/generate", response_model=DailyPlanOut, status_code=201)
 async def generate_plan(current_user: CurrentUser, db: DbDep, plan_date: date | None = None):
-    target_date = plan_date or date.today()
-
-    # Delete existing plan for the date if any
-    existing = await db.execute(
-        select(DailyPlan).where(
-            DailyPlan.user_id == current_user.id,
-            DailyPlan.plan_date == target_date,
-        )
-    )
-    old_plan = existing.scalar_one_or_none()
-    if old_plan:
-        await db.delete(old_plan)
+    target = plan_date or date.today()
+    existing = (await db.execute(
+        select(DailyPlan).where(DailyPlan.user_id == current_user.id, DailyPlan.plan_date == target)
+    )).scalar_one_or_none()
+    if existing:
+        await db.delete(existing)
         await db.flush()
-
-    plan = await generate_plan_for_date(current_user, target_date, db)
-    return plan
+    return await generate_plan_for_date(current_user, target, db)
 
 
 @router.patch("/slots/{slot_id}", response_model=DailyPlanOut)
@@ -73,52 +62,38 @@ async def update_slot(slot_id: str, payload: UpdateSlotRequest, current_user: Cu
         raise NotFoundException("Slot")
 
     if payload.status == SlotStatus.REPLACED:
-        if not payload.replacement_meal_id:
-            raise BadRequestException("replacement_meal_id is required when replacing a slot.")
         meal = await db.get(Meal, payload.replacement_meal_id)
         if not meal:
             raise NotFoundException("Replacement meal")
         slot.meal_id = payload.replacement_meal_id
 
     slot.status = payload.status
-
-    # If confirmed — create a log entry
     if payload.status == SlotStatus.CONFIRMED:
-        log = MealLogEntry(
+        db.add(MealLogEntry(
             user_id=current_user.id,
             slot_id=slot.id,
             meal_id=slot.meal_id,
             eaten_on=slot.plan.plan_date,
             was_planned=True,
-        )
-        db.add(log)
-
-    # If skipped — no log entry (cooldown not consumed)
+        ))
 
     db.add(slot)
     await db.flush()
 
-    # Return the full plan
-    plan_result = await db.execute(
-        select(DailyPlan)
-        .where(DailyPlan.id == slot.plan_id)
-        .options(*_plan_options())
-    )
-    return plan_result.scalar_one()
+    plan = (await db.execute(
+        select(DailyPlan).where(DailyPlan.id == slot.plan_id).options(*_plan_eager())
+    )).scalar_one()
+    return plan
 
 
 @router.post("/log", response_model=MealLogOut, status_code=201)
 async def log_extra_meal(payload: LogExtraMealRequest, current_user: CurrentUser, db: DbDep):
-    meal = await db.get(Meal, payload.meal_id)
-    if not meal:
+    if not await db.get(Meal, payload.meal_id):
         raise NotFoundException("Meal")
-
-    eaten = payload.eaten_on or date.today()
-
     log = MealLogEntry(
         user_id=current_user.id,
         meal_id=payload.meal_id,
-        eaten_on=eaten,
+        eaten_on=payload.eaten_on or date.today(),
         was_planned=False,
         notes=payload.notes,
     )
@@ -128,13 +103,23 @@ async def log_extra_meal(payload: LogExtraMealRequest, current_user: CurrentUser
     return log
 
 
-# ── Internal helper ───────────────────────────────────────────────────────────
+@router.delete("/{plan_date}", response_model=MessageResponse)
+async def delete_plan(plan_date: date, current_user: CurrentUser, db: DbDep):
+    result = await db.execute(
+        select(DailyPlan).where(DailyPlan.user_id == current_user.id, DailyPlan.plan_date == plan_date)
+    )
+    plan = result.scalar_one_or_none()
+    if not plan:
+        raise NotFoundException("Plan")
+    await db.delete(plan)
+    return MessageResponse(message="Plan deleted.")
 
-async def _get_or_create_plan(user_id, plan_date, db, user):
+
+async def _get_or_create(user, plan_date: date, db):
     result = await db.execute(
         select(DailyPlan)
-        .where(DailyPlan.user_id == user_id, DailyPlan.plan_date == plan_date)
-        .options(*_plan_options())
+        .where(DailyPlan.user_id == user.id, DailyPlan.plan_date == plan_date)
+        .options(*_plan_eager())
     )
     plan = result.scalar_one_or_none()
     if plan:

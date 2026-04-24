@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings
-from pydantic import EmailStr, field_validator
 from typing import List
 import secrets
 
@@ -43,17 +42,10 @@ class Settings(BaseSettings):
     DEFAULT_COOLDOWN_DAYS: int = 4
     DEFAULT_ASSUME_COOKED: bool = True
 
-    @field_validator("ALLOWED_ORIGINS", mode="before")
-    @classmethod
-    def parse_origins(cls, v: str) -> str:
-        return v
-
     def get_allowed_origins(self) -> List[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {"env_file": ".env", "case_sensitive": True}
 
 
 settings = Settings()

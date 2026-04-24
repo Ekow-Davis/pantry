@@ -2,23 +2,7 @@
 
 Backend API for **MealWise** — a personal meal planning PWA with a focus on Ghanaian and West African cuisine.
 
-Built with FastAPI, PostgreSQL (async), SQLAlchemy, and APScheduler.
-
----
-
-## Tech Stack
-
-| Layer | Choice |
-|---|---|
-| Framework | FastAPI |
-| Database | PostgreSQL via asyncpg |
-| ORM | SQLAlchemy 2.0 (async) |
-| Migrations | Alembic |
-| Auth | JWT (python-jose + passlib bcrypt) |
-| Rate limiting | slowapi |
-| Background jobs | APScheduler |
-| Email | Resend |
-| Image storage | Cloudinary |
+Built with FastAPI, PostgreSQL (async via asyncpg), SQLAlchemy 2.0, and APScheduler.
 
 ---
 
@@ -28,35 +12,56 @@ Built with FastAPI, PostgreSQL (async), SQLAlchemy, and APScheduler.
 pantry-api/
 ├── app/
 │   ├── api/
+│   │   ├── deps.py                      # Auth dependencies (CurrentUser, CurrentAdmin)
 │   │   └── v1/
-│   │       ├── endpoints/
-│   │       │   ├── auth.py          # Register, login, refresh, /me
-│   │       │   ├── users.py         # Preferences, blacklist, pantry, history
-│   │       │   ├── meals.py         # Meal library, contribute
-│   │       │   ├── planning.py      # Daily plan, slot confirmation, log
-│   │       │   ├── recommendations.py  # Daily rec, pantry matches
-│   │       │   └── admin.py         # Contributions, users, stats
-│   │       └── router.py
-│   │   └── deps.py                  # Auth dependencies (CurrentUser, CurrentAdmin)
+│   │       ├── router.py                # Aggregates all endpoint routers
+│   │       └── endpoints/
+│   │           ├── auth.py              # Register, login, refresh, /me
+│   │           ├── users.py             # Preferences, blacklist, pantry, history
+│   │           ├── ingredients.py       # Ingredient + nutrition CRUD
+│   │           ├── meals.py             # Meal library, recipes, preferences, contribute
+│   │           ├── planning.py          # Daily plans, slot confirmation, meal logging
+│   │           ├── recommendations.py   # Daily recommendation, pantry matches
+│   │           └── admin.py             # User mgmt, meal mgmt, contributions, stats
 │   ├── core/
-│   │   ├── config.py                # Pydantic settings from .env
-│   │   ├── security.py              # JWT + bcrypt utilities
-│   │   └── exceptions.py            # Custom HTTP exceptions
+│   │   ├── config.py                    # Pydantic settings from .env
+│   │   ├── security.py                  # JWT + bcrypt
+│   │   └── exceptions.py               # Custom HTTP exceptions
 │   ├── db/
-│   │   └── session.py               # Async engine, session factory, Base
+│   │   └── session.py                   # Async engine, session factory, Base
 │   ├── models/
-│   │   └── models.py                # All SQLAlchemy models
+│   │   ├── base.py                      # Shared enums and helpers
+│   │   ├── user.py                      # User model
+│   │   ├── meal.py                      # Meal, MealCategory, MealCategoryMap, UserMealPreference
+│   │   ├── ingredient.py                # Ingredient, IngredientNutrition
+│   │   ├── recipe.py                    # MealRecipe, RecipeIngredient
+│   │   ├── plan.py                      # DailyPlan, DailyPlanSlot
+│   │   ├── log.py                       # MealLogEntry
+│   │   ├── pantry.py                    # UserBlacklist, UserPantry
+│   │   ├── contribution.py              # MealContribution
+│   │   └── __init__.py                  # Imports all models (required for Alembic)
 │   ├── schemas/
-│   │   └── schemas.py               # All Pydantic request/response schemas
+│   │   ├── common.py                    # MessageResponse
+│   │   ├── auth.py                      # Register, login, token schemas
+│   │   ├── user.py                      # UserOut, preference updates
+│   │   ├── ingredient.py                # Ingredient + nutrition schemas
+│   │   ├── meal.py                      # Meal, recipe, category schemas
+│   │   ├── plan.py                      # Plan, slot schemas
+│   │   ├── log.py                       # Meal log schemas
+│   │   ├── pantry.py                    # Blacklist, pantry, match schemas
+│   │   ├── contribution.py              # Contribution schemas
+│   │   ├── admin.py                     # Admin stats schema
+│   │   ├── recommendation.py            # Recommendation schema
+│   │   └── __init__.py                  # Re-exports everything
 │   ├── services/
-│   │   ├── planner.py               # Planning engine (cooldown, scoring, slot generation)
-│   │   ├── nutrition.py             # Per-serving nutrition computation
-│   │   ├── recommendations.py       # Daily recommendation + pantry matcher
-│   │   └── scheduler.py             # APScheduler jobs (end-of-day, nightly)
-│   └── main.py                      # App factory, CORS, lifespan
+│   │   ├── planner.py                   # Planning engine (cooldown, scoring, slot generation)
+│   │   ├── nutrition.py                 # Per-serving nutrition computation
+│   │   ├── recommendations.py           # Daily recommendation + pantry matcher
+│   │   └── scheduler.py                 # APScheduler jobs
+│   └── main.py                          # App factory, CORS, lifespan
 ├── alembic/
-│   ├── versions/                    # Migration files (generated)
-│   ├── env.py
+│   ├── versions/                        # Generated migration files
+│   ├── env.py                           # Async migration runner (% password safe)
 │   └── script.py.mako
 ├── tests/
 ├── .env.example
@@ -70,12 +75,7 @@ pantry-api/
 
 ## Local Setup
 
-### 1. Prerequisites
-
-- Python 3.12
-- PostgreSQL installed and running locally
-
-### 2. Create the database
+### 1. Create the database
 
 Open a terminal and connect to PostgreSQL:
 
@@ -83,75 +83,78 @@ Open a terminal and connect to PostgreSQL:
 psql -U postgres
 ```
 
-Then run these commands inside the psql shell:
+Inside the psql shell:
 
 ```sql
 CREATE DATABASE mealwise_db;
-CREATE USER mealwise_user WITH PASSWORD 'yourpassword';
-GRANT ALL PRIVILEGES ON DATABASE mealwise_db TO mealwise_user;
 \q
 ```
 
-> You can also just use the default `postgres` user for local development.
-> In that case your DATABASE_URL would be:
-> `postgresql+asyncpg://postgres:yourpassword@localhost:5432/mealwise_db`
-
-### 3. Clone and set up the virtual environment
+### 2. Set up virtual environment
 
 ```bash
-# Create venv
 python -m venv venv
 
 # Activate (Windows)
 venv\Scripts\activate
 
-# Activate (Mac/Linux)
+# Activate (Mac / Linux)
 source venv/bin/activate
 ```
 
-### 4. Install dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Configure environment
+### 4. Configure environment
 
 ```bash
-cp .env.example .env
+copy .env.example .env
 ```
 
 Open `.env` and fill in at minimum:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://postgres:yourpassword@localhost:5432/mealwise_db
-SECRET_KEY=run-python-secrets-token-hex-64-and-paste-here
+SECRET_KEY=generate-this-below
 ```
 
-To generate a SECRET_KEY:
+**If your PostgreSQL password contains special characters**, URL-encode it first:
+
+```bash
+python -c "import urllib.parse; print(urllib.parse.quote('your_password', safe=''))"
+```
+
+Then paste the encoded version into `DATABASE_URL`.
+
+Generate a `SECRET_KEY`:
 
 ```bash
 python -c "import secrets; print(secrets.token_hex(64))"
 ```
 
-### 6. Run database migrations
+### 5. Run migrations
 
 ```bash
-# Generate the initial migration from your models
 alembic revision --autogenerate -m "initial schema"
-
-# Apply migrations to the database
 alembic upgrade head
 ```
 
-### 7. Start the development server
+> **Note on the % password fix:** The Alembic `env.py` reads `DATABASE_URL`
+> directly from the `.env` file rather than passing it through `alembic.ini`.
+> This bypasses the `configparser` interpolation that caused the
+> `ValueError: invalid interpolation syntax` error with URL-encoded passwords.
+
+### 6. Start the server
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-The API will be available at `http://localhost:8000`
-Interactive docs at `http://localhost:8000/docs`
+API: `http://localhost:8000`
+Docs: `http://localhost:8000/docs` (only when `DEBUG=True`)
 
 ---
 
@@ -164,50 +167,31 @@ Interactive docs at `http://localhost:8000/docs`
 | Apply migrations | `alembic upgrade head` |
 | Rollback one step | `alembic downgrade -1` |
 | Run tests | `pytest` |
+| URL-encode password | `python -c "import urllib.parse; print(urllib.parse.quote('pw', safe=''))"` |
 | Generate SECRET_KEY | `python -c "import secrets; print(secrets.token_hex(64))"` |
 
 ---
 
 ## API Overview
 
-| Group | Base Path | Description |
-|---|---|---|
-| Auth | `/api/v1/auth` | Register, login, refresh, /me |
-| User | `/api/v1/me` | Preferences, blacklist, pantry, history |
-| Meals | `/api/v1/meals` | Meal library, contribute |
-| Planning | `/api/v1/plan` | Daily plans, slot management, meal logging |
-| Recommendations | `/api/v1/recommendations` | Daily novel recommendation, pantry matches |
-| Admin | `/api/v1/admin` | Contributions queue, users, stats |
-| Health | `/health` | Service health check |
-
-Full interactive documentation is available at `/docs` when `DEBUG=True`.
+| Group | Base Path | Auth Required | Notes |
+|---|---|---|---|
+| Auth | `/api/v1/auth` | No (except /me) | Register, login, refresh |
+| User | `/api/v1/me` | User | Preferences, blacklist, pantry, history |
+| Ingredients | `/api/v1/ingredients` | User (read) / Admin (write) | Ingredient + nutrition CRUD |
+| Meals | `/api/v1/meals` | User (read) / Admin (write) | Meals, recipes, preferences, contribute |
+| Planning | `/api/v1/plan` | User | Daily plans, slot management, meal logging |
+| Recommendations | `/api/v1/recommendations` | User | Daily novel rec, pantry matches |
+| Admin | `/api/v1/admin` | Admin only | User mgmt, contributions, stats |
+| Health | `/health` | No | Service health check |
 
 ---
 
 ## Background Jobs
 
-Two scheduled jobs run automatically:
-
 | Job | Schedule | Description |
 |---|---|---|
-| End-of-day confirmation | 23:30 nightly | Auto-confirms unactioned plan slots for users with `assume_cooked=True` |
+| End-of-day confirmation | 23:30 nightly | Auto-confirms unactioned slots for users with `assume_cooked=True` |
 | Nightly maintenance | 00:05 nightly | Marks stale draft plans as completed |
 
-Scheduler timezone defaults to `Africa/Accra` and is configurable via `SCHEDULER_TIMEZONE` in `.env`.
-
----
-
-## Environment Variables
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `DATABASE_URL` | Yes | — | PostgreSQL async connection string |
-| `SECRET_KEY` | Yes | — | JWT signing key — generate a fresh one |
-| `ALGORITHM` | No | `HS256` | JWT algorithm |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | `30` | Access token lifetime |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | No | `7` | Refresh token lifetime |
-| `DEBUG` | No | `False` | Enables SQL logging and /docs |
-| `ALLOWED_ORIGINS` | No | `localhost:5173` | Comma-separated CORS origins |
-| `SCHEDULER_TIMEZONE` | No | `Africa/Accra` | Timezone for scheduled jobs |
-| `RESEND_API_KEY` | No | — | For transactional emails |
-| `CLOUDINARY_*` | No | — | For meal photo uploads |
+Scheduler timezone: `Africa/Accra` (configurable via `SCHEDULER_TIMEZONE` in `.env`).

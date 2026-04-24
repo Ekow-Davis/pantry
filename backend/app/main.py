@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -17,8 +16,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pantry-api")
 
+limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.RATE_LIMIT_PER_MINUTE}/minute"])
 
-# ── Lifespan ──────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,13 +27,6 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
     logger.info("Shutdown complete.")
 
-
-# ── Rate limiter ──────────────────────────────────────────────────────────────
-
-limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.RATE_LIMIT_PER_MINUTE}/minute"])
-
-
-# ── App factory ───────────────────────────────────────────────────────────────
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -46,11 +38,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Rate limiter
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.get_allowed_origins(),
@@ -59,10 +49,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Routers
     app.include_router(api_router)
 
-    # Health check
     @app.get("/health", tags=["Health"])
     async def health():
         return {"status": "ok", "version": settings.APP_VERSION}
