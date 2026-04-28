@@ -1,5 +1,38 @@
 <script setup lang="ts">
-import { CalendarDays, ShoppingBasket, CheckCircle2, RefreshCw, Bell, Shield } from 'lucide-vue-next'
+import { BookOpen, CalendarDays, CheckCircle2, ShoppingBasket, ClipboardList, Utensils } from 'lucide-vue-next'
+
+const steps = [
+  {
+    icon: ClipboardList,
+    title: 'Create your profile',
+    desc: "Sign up, set your country, and configure your meal planning preferences — including cooldown days and whether the system should assume a meal was cooked if you forget to confirm.",
+  },
+  {
+    icon: BookOpen,
+    title: 'Browse the meal library',
+    desc: "Explore hundreds of recipes covering Ghanaian staples (Fufu, Waakye, Banku), West African classics, and international dishes. Filter by category — breakfast, lunch, dinner, snack.",
+  },
+  {
+    icon: Utensils,
+    title: 'Set your preferences',
+    desc: "Pin specific meals to specific meal times (e.g. Rice Porridge for breakfast only), blacklist ingredients you're allergic to or can't access, and mark meals you love.",
+  },
+  {
+    icon: CalendarDays,
+    title: 'Get your daily plan',
+    desc: "Each day MealWise generates a 3-slot plan (breakfast, lunch, dinner) filtered through your cooldown rules, slot preferences, and blacklisted ingredients. You can add extra snack slots too.",
+  },
+  {
+    icon: CheckCircle2,
+    title: 'Confirm what you cooked',
+    desc: "At end of day, mark each slot — cooked, skipped, or replaced with something different. Only confirmed meals consume their cooldown.",
+  },
+  {
+    icon: ShoppingBasket,
+    title: 'Discover via the pantry',
+    desc: "List your available ingredients and instantly see every meal you can make right now, plus those that need just one more ingredient.",
+  },
+]
 </script>
 
 <template>
@@ -7,7 +40,10 @@ import { CalendarDays, ShoppingBasket, CheckCircle2, RefreshCw, Bell, Shield } f
     <div class="container max-w-4xl">
       <div class="text-center mb-16">
         <span class="badge badge-primary mb-4">How It Works</span>
-        <h1 class="text-5xl font-black mb-4" style="font-family:var(--font-display)">The MealWise system,<br><span style="color:var(--color-primary)">explained simply</span></h1>
+        <h1 class="text-5xl font-black mb-4" style="font-family:var(--font-display)">
+          The MealWise system,<br>
+          <span style="color:var(--color-primary)">explained simply</span>
+        </h1>
         <p class="text-lg max-w-xl mx-auto" style="color:var(--color-text-muted)">
           Smart planning rules meet your personal preferences. Here's how it all comes together.
         </p>
@@ -17,9 +53,14 @@ import { CalendarDays, ShoppingBasket, CheckCircle2, RefreshCw, Bell, Shield } f
       <div class="relative">
         <div class="absolute left-6 top-0 bottom-0 w-0.5 hidden md:block" style="background:var(--color-border)"></div>
         <div class="flex flex-col gap-10">
-          <div v-for="(step, i) in steps" :key="i" class="flex gap-6 items-start animate-fade-up" :class="`delay-${(i+1)*100}`">
+          <div
+            v-for="(step, i) in steps"
+            :key="i"
+            class="flex gap-6 items-start animate-fade-up"
+            :class="`delay-${(i + 1) * 100}`"
+          >
             <div class="w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-sm relative z-10"
-              :style="`background:var(--color-primary)`">{{ i + 1 }}</div>
+              style="background:var(--color-primary)">{{ i + 1 }}</div>
             <div class="card flex-1 p-6">
               <div class="flex items-center gap-3 mb-2">
                 <component :is="step.icon" class="w-5 h-5" style="color:var(--color-primary)" />
@@ -47,14 +88,3 @@ import { CalendarDays, ShoppingBasket, CheckCircle2, RefreshCw, Bell, Shield } f
     </div>
   </section>
 </template>
-
-<script lang="ts">
-const steps = [
-  { icon: null, title: 'Create your profile', desc: 'Sign up, set your country, and configure your meal planning preferences — including cooldown days and whether the system should assume a meal was cooked if you forget to confirm.' },
-  { icon: null, title: 'Browse the meal library', desc: 'Explore hundreds of recipes covering Ghanaian staples (Fufu, Waakye, Banku), West African classics, and international dishes. Filter by category — breakfast, lunch, dinner, snack.' },
-  { icon: null, title: 'Set your preferences', desc: 'Pin specific meals to specific meal times (e.g. Rice Porridge for breakfast only), blacklist ingredients you\'re allergic to or can\'t access, and mark meals you love.' },
-  { icon: null, title: 'Get your daily plan', desc: 'Each day MealWise generates a 3-slot plan (breakfast, lunch, dinner) filtered through your cooldown rules, slot preferences, and blacklisted ingredients. You can add extra snack slots too.' },
-  { icon: null, title: 'Confirm what you cooked', desc: 'At end of day, mark each slot — cooked, skipped, or replaced with something different. If you forget, the system assumes cooked (if that\'s your preference). Only confirmed meals consume their cooldown.' },
-  { icon: null, title: 'Discover via the pantry', desc: 'Drop into the Pantry tab and list your available ingredients. Instantly see every meal you can make right now, plus those that need just one more ingredient.' },
-]
-</script>

@@ -9,10 +9,11 @@ onMounted(() => initTheme())
 </script>
 
 <template>
-  <RouterView v-slot="{ Component, route }">
-    <Transition name="page" mode="out-in">
-      <component :is="Component" :key="route.path" />
-    </Transition>
-  </RouterView>
+  <!--
+    No <Transition> here — layout components (HomeLayout, AppLayout etc.)
+    are multi-element trees and cannot be animated at this level.
+    Page transitions are handled inside each layout's own <RouterView>.
+  -->
+  <RouterView />
   <ToastContainer />
 </template>

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '@/composables/useApi'
-import router from '@/router'
 
 interface User {
   id: string
@@ -19,6 +19,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token        = ref<string | null>(localStorage.getItem('mw-token'))
   const refreshToken = ref<string | null>(localStorage.getItem('mw-refresh'))
   const user         = ref<User | null>(null)
+  const _initialized = ref(false)
 
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin         = computed(() => user.value?.role === 'admin')
@@ -40,6 +41,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(email: string, password: string) {
+    const router = useRouter()
     const { data } = await api.post('/api/v1/auth/login', { email, password })
     setTokens(data.access_token, data.refresh_token)
     await fetchMe()
@@ -52,20 +54,29 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    const router = useRouter()
     token.value        = null
     refreshToken.value = null
     user.value         = null
+    _initialized.value = false
     localStorage.removeItem('mw-token')
     localStorage.removeItem('mw-refresh')
     router.push('/auth/login')
   }
 
-  // Restore user on app load
+  // Called by the navigation guard on every route change.
+  // Only actually fetches once per session.
   async function init() {
+    if (_initialized.value) return
+    _initialized.value = true
     if (token.value && !user.value) {
       await fetchMe()
     }
   }
 
-  return { token, refreshToken, user, isAuthenticated, isAdmin, setTokens, fetchMe, login, register, logout, init }
+  return {
+    token, refreshToken, user,
+    isAuthenticated, isAdmin,
+    setTokens, fetchMe, login, register, logout, init,
+  }
 })
